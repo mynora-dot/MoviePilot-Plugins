@@ -4,7 +4,7 @@ import json
 import threading
 import types
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import requests
 
@@ -34,6 +34,7 @@ register_module(PKG + ".core", package=True, CloudDriveCapability=cloud.CloudDri
 register_module(PKG + ".core.services.runtime", sync_lock=threading.Lock())
 load_module(PKG + ".drive.common", "plugins.v2/cloudsubscribe/drive/common.py")
 client_mod = load_module(PKG + ".drive.baidu.client", "plugins.v2/cloudsubscribe/drive/baidu/client.py")
+qrcode_mod = load_module(PKG + ".drive.baidu.qrcode", "plugins.v2/cloudsubscribe/drive/baidu/qrcode.py")
 files_mod = load_module(PKG + ".drive.baidu.files", "plugins.v2/cloudsubscribe/drive/baidu/files.py")
 share_mod = load_module(PKG + ".drive.baidu.share", "plugins.v2/cloudsubscribe/drive/baidu/share.py")
 provider_mod = load_module(PKG + ".drive.baidu.provider", "plugins.v2/cloudsubscribe/drive/baidu/provider.py")
@@ -326,6 +327,98 @@ class TestBaiduManualApi(unittest.TestCase):
         result = api_mod.SyncApi(self.owner).api_vue_start_manual_sync(self.payload())
         self.assertFalse(result["success"])
         self.owner._submit_sync_operation.assert_not_called()
+
+
+class BaiduQRCodeTests(unittest.TestCase):
+    def setUp(self):
+        self.service = qrcode_mod.BaiduQRCodeService()
+        self.session = MagicMock()
+        self.addCleanup(self.service.close)
+
+    @staticmethod
+    def response(value):
+        return MagicMock(text=json.dumps(value))
+
+    def create(self):
+        self.session.get.side_effect = [MagicMock(), self.response({"errno": 0, "sign": "test-sign"}),
+                                        MagicMock(content=b"\x89PNG\r\n\x1a\ntest")]
+        with patch.object(qrcode_mod.requests, "Session", return_value=self.session):
+            return self.service.create_qrcode_login()
+
+    def test_creation_keeps_passport_session_on_server(self):
+        result = self.create()
+        self.assertTrue(result["qrcode"].startswith("data:image/png;base64,"))
+        self.assertNotIn("sign", result)
+        self.assertNotIn("cookie", result)
+        self.assertEqual(self.service._sessions[result["qr_token"]]["sign"], "test-sign")
+        definition = definition_mod.BaiduDriverDefinition
+        self.assertIsInstance(definition.create_qrcode_service(), qrcode_mod.BaiduQRCodeService)
+        self.assertEqual(definition.qrcode_config_values({"cookie": "BDUSS=test"}),
+                         {"baidu_cookie": "BDUSS=test"})
+        field = next(f for g in definition.get_config_groups() for f in g.fields if f.key == "baidu_cookie")
+        self.assertEqual(field.scan_provider, "baidu")
+
+    def test_pending_and_timeout_do_not_discard_session(self):
+        token = self.create()["qr_token"]
+        self.session.get.side_effect = [self.response({"errno": 1}), requests.exceptions.Timeout()]
+        for _ in range(2):
+            self.assertEqual(self.service.check_qrcode_login(qr_token=token)["status"], "waiting")
+        self.assertIn(token, self.service._sessions)
+
+    def test_expiration_closes_session_and_invalid_token_does_not_request(self):
+        token = self.create()["qr_token"]
+        self.service._sessions[token]["expires"] = 0
+        count = self.session.get.call_count
+        self.assertEqual(self.service.check_qrcode_login(qr_token=token)["status"], "expired")
+        self.assertEqual(self.service.check_qrcode_login(qr_token="unknown")["status"], "expired")
+        self.assertEqual(self.session.get.call_count, count)
+        self.session.close.assert_called_once()
+
+    def test_success_exchanges_ticket_and_requires_cookie(self):
+        for has_cookie in (True, False):
+            with self.subTest(has_cookie=has_cookie):
+                token = self.create()["qr_token"]
+                self.session.cookies = requests.cookies.RequestsCookieJar()
+                if has_cookie:
+                    self.session.cookies.set("BDUSS", "test-login", domain=".baidu.com")
+                    self.session.cookies.set("STOKEN", "test-token", domain="pan.baidu.com")
+                self.session.get.side_effect = [self.response({"errno": 0, "channel_v": json.dumps(
+                    {"status": 0, "v": "temporary-ticket"})}), self.response({"errInfo": {"no": "0"}}), MagicMock()]
+                if has_cookie:
+                    result = self.service.check_qrcode_login(qr_token=token)
+                    self.assertEqual(result["status"], "success")
+                    self.assertIn("BDUSS=test-login", result["cookie"])
+                    self.assertIn("STOKEN=test-token", result["cookie"])
+                    self.assertNotIn("temporary-ticket", result["cookie"])
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "Cookie"):
+                        self.service.check_qrcode_login(qr_token=token)
+                self.assertNotIn(token, self.service._sessions)
+
+    def test_jsonp_and_invalid_qrcode(self):
+        self.assertEqual(self.service._payload(MagicMock(text='callback({"errno":0});')), {"errno": 0})
+        self.session.get.side_effect = [MagicMock(), self.response({"sign": "s"}), MagicMock(content=b"html")]
+        with patch.object(qrcode_mod.requests, "Session", return_value=self.session):
+            with self.assertRaisesRegex(RuntimeError, "图片无效"):
+                self.service.create_qrcode_login()
+        self.assertFalse(self.service._sessions)
+        self.session.close.assert_called_once()
+
+    def test_failed_ticket_exchange_discards_session_without_credentials(self):
+        token = self.create()["qr_token"]
+        self.session.get.side_effect = [self.response({"errno": 0, "channel_v": {
+            "status": 0, "v": "temporary-ticket"}}), self.response({"errInfo": {"no": "400"}})]
+        with self.assertRaisesRegex(RuntimeError, "账号验证"):
+            self.service.check_qrcode_login(qr_token=token)
+        self.assertNotIn(token, self.service._sessions)
+        self.session.close.assert_called_once()
+
+    def test_expired_passport_response_discards_session(self):
+        token = self.create()["qr_token"]
+        self.session.get.side_effect = [self.response({"errno": 2})]
+        self.assertEqual(self.service.check_qrcode_login(qr_token=token)["status"], "expired")
+        self.assertNotIn(token, self.service._sessions)
+        self.session.close.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@
 在 MoviePilot 的插件市场中添加以下仓库地址：
 
 ```text
-https://github.com/odomu/MoviePilot-Plugins
+https://github.com/mynora-dot/MoviePilot-Plugins
 ```
 
 插件版本、MoviePilot 最低版本及更新记录以 [package.v2.json](package.v2.json) 为准。
