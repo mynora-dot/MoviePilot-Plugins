@@ -542,6 +542,7 @@ function getLibrarySummary(media) {
 function isCrossTransferResource(res) {
   if (!res?.resource_type && !res?.pan_type) return false
   const type = getNormalizedResourceType(res)
+  if (type === "baidu") return false
   if (isOfflineResourceType(type)) return false
   return type !== getNormalizedResourceType({ resource_type: activePluginConfig.value?.cloud_drive || "115" })
 }
@@ -564,11 +565,11 @@ function openCrossTransferDialog(res, actionOrIndex) {
   crossSourceDriveKey.value = src
   crossSourceDriveName.value = getResourceTypeName(src) || "异构网盘"
   const mainDrive = String(activePluginConfig.value?.cloud_drive || "115").toLowerCase()
-  if (src !== mainDrive) {
-    crossTargetDrive.value = mainDrive
-  } else {
-    const candidate = (availableDrives.value || []).find((d) => d.key !== src)
-    crossTargetDrive.value = candidate?.key || "115"
+  const candidates = selectableTargetDrives.value
+  crossTargetDrive.value = candidates.find((drive) => drive.key === mainDrive)?.key || candidates[0]?.key || ""
+  if (!crossTargetDrive.value) {
+    showMessage("没有已配置且支持上传的跨盘目标网盘", "warning")
+    return
   }
 
   if (typeof actionOrIndex === "function") {
@@ -728,9 +729,14 @@ async function submitManualDownload(url, title, resItem = null, options = {}) {
   }
   const finalResourceTitle = resItem?.title || title || mediaTitle
 
-  const isCross = options.is_cross !== undefined ? options.is_cross : isCrossTransferResource(resItem)
+  const nativeSave = resourceType === "baidu" && !options.is_cross
+  const isCross = nativeSave
+    ? false
+    : options.is_cross !== undefined
+      ? options.is_cross
+      : isCrossTransferResource(resItem)
   const actionName = isCross ? "跨盘转存" : "转存"
-  const targetCloud = options.target_cloud || ""
+  const targetCloud = nativeSave ? "baidu" : options.target_cloud || ""
   const resourcePayload = {
     ...(resItem || {}),
     ...(normalizedUrl ? { url: normalizedUrl } : {}),
@@ -764,6 +770,7 @@ async function submitManualDownload(url, title, resItem = null, options = {}) {
     cross_transfer: isCross,
     allow_cross_transfer: true,
     target_cloud: targetCloud,
+    save_to_source: nativeSave,
     manual_upgrade: false,
     skip_history: false,
   }

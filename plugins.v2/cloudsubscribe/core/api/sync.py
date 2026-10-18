@@ -383,7 +383,7 @@ class SyncApi(OwnerDelegator):
                     res_list[0].get("url") or res_list[0].get("resource_ref") or res_list[0].get("title") or "")
             elif res_list and isinstance(res_list, list):
                 first_key = str(res_list[0])
-            fingerprint = f"{sub_id_check}:{raw_m.get('tmdb_id')}:{raw_m.get('media_type')}:{first_key}"
+            fingerprint = f"{sub_id_check}:{raw_m.get('tmdb_id')}:{raw_m.get('media_type')}:{first_key}:{(payload or {}).get('save_to_source')}:{(payload or {}).get('target_cloud')}"
             if fingerprint in _RECENT_MANUAL_SUBMITS:
                 logger.debug(f"拦截短时间内重复提交的转存请求：{fingerprint}")
                 return {
@@ -781,7 +781,7 @@ class SyncApi(OwnerDelegator):
                 "unlock_points": 0,
                 "skip_history": skip_history,
                 "target_cloud": target_cloud_param,
-                "is_cross": bool(target_cloud_param or (payload or {}).get("is_cross")),
+                "is_cross": bool(target_cloud_param or (payload or {}).get("is_cross")) and not (payload or {}).get("save_to_source"),
                 **{
                     key: metadata[key]
                     for key in (
@@ -806,6 +806,21 @@ class SyncApi(OwnerDelegator):
                 ),
             }
 
+        native_provider = ""
+        if (payload or {}).get("save_to_source"):
+            native_provider = str((payload or {}).get("target_cloud") or "").strip().lower()
+            if native_provider != "baidu" or not resources or any(
+                    resource_type_from_url(item.get("url", "")) != native_provider for item in resources
+            ):
+                return {"success": False, "message": "保存到百度网盘仅接受百度分享链接"}
+            try:
+                native_drive = self._cloud_drive_registry.get(native_provider)
+                for capability in (CloudDriveCapability.AUTHENTICATION, CloudDriveCapability.SHARE_TRANSFER,
+                                   CloudDriveCapability.DIRECTORY_READ, CloudDriveCapability.FILE_QUERY):
+                    native_drive.require(capability)
+            except (KeyError, RuntimeError):
+                return {"success": False, "message": "请先配置并保存百度网盘 Cookie"}
+
         order = {value: index for index, value in enumerate(self._resource_type_order)}
         resources.sort(key=lambda item: order.get(item["resource_type"], len(order)))
         sync_kwargs = {
@@ -813,6 +828,7 @@ class SyncApi(OwnerDelegator):
             "manual_resources": resources,
             "manual_target": media_target,
             "manual_upgrade": bool((payload or {}).get("manual_upgrade")),
+            **({"native_save_provider": native_provider} if native_provider else {}),
         }
         queue_media = media_target or {
             "title": getattr(subscribe, "name", "") if subscribe else "",
@@ -858,6 +874,8 @@ class SyncApi(OwnerDelegator):
         return {
             "success": True,
             "message": (
+                f"保存到百度网盘的任务已提交，共 {len(resources)} 条资源"
+                if native_provider else
                 f"手动添加任务已提交，共 {len(resources)} 条资源"
                 if subscribe_id
                 else f"无订阅媒体任务已提交，共 {len(resources)} 条资源"

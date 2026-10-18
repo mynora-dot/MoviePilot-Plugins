@@ -474,8 +474,8 @@
                   class="res-btn-icon res-btn-primary"
                   :loading="downloadingIndex === idx"
                   :disabled="downloadingIndex !== -1"
-                  title="一键转存"
-                  aria-label="一键转存"
+                  :title="res.resource_type === 'baidu' ? '保存到百度网盘（保留原目录与文件名）' : '一键转存'"
+                  :aria-label="res.resource_type === 'baidu' ? '保存到百度网盘' : '一键转存'"
                   @click.stop="handleQuickDownload(res, idx)" />
               </div>
             </div>

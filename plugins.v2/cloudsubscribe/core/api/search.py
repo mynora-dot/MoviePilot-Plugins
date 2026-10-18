@@ -13,7 +13,7 @@ from app.schemas.types import MediaType
 from app.utils.string import StringUtils
 
 from .page import _platform_image_url, clear_ui_options_cache
-from .. import OwnerDelegator, SearchCapability, build_resolve_kwargs
+from .. import CloudDriveCapability, OwnerDelegator, SearchCapability, build_resolve_kwargs
 from ..config import UIConfig
 from ..media import apply_media_identity, recognize_media, search_medias
 from ...handlers.search import SearchHandler
@@ -1196,16 +1196,11 @@ class SearchApi(OwnerDelegator):
         registry = getattr(self, "_cloud_drive_registry", None)
         if registry:
             for drive in registry.available():
-                if getattr(drive, "key", "") not in {"baidu", "xunlei"}:
+                if drive.supports(CloudDriveCapability.LOCAL_UPLOAD) and drive.supports(CloudDriveCapability.FILE_QUERY):
                     available_drives.append({
                         "key": drive.key,
                         "name": drive.name,
                     })
-        if not available_drives:
-            main_key = getattr(getattr(self, "_cloud_drive", None), "key", "115")
-            main_name = getattr(getattr(self, "_cloud_drive", None), "name", "115网盘")
-            available_drives.append({"key": main_key, "name": main_name})
-
         return {
             "success": True,
             "message": f"共检索到 {len(all_items)} 条候选资源 (耗时 {elapsed}s)",

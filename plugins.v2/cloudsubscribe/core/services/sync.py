@@ -55,6 +55,12 @@ class SyncExecutionService(OwnerDelegator):
         stop_event = getattr(self, "_stop_event", None)
         if stop_event is not None and stop_event.is_set():
             stop_event.clear()
+        if sync_kwargs.get("native_save_provider"):
+            from .native_save import NativeShareSaveService
+            return NativeShareSaveService(self._owner).run(
+                sync_kwargs["native_save_provider"], sync_kwargs["manual_resources"],
+                sync_kwargs.get("manual_target"), sync_kwargs.get("result"),
+            )
         return self.sync_subscribes(**sync_kwargs, wait_for_slot=True)
 
     def _submit_sync_operation(

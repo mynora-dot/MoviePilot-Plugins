@@ -21,6 +21,7 @@ TYPE_HOSTS = {
     },
     "quark": {"quark.cn"},
     "alipan": {"alipan.com", "aliyundrive.com", "aliyundrive.net"},
+    "baidu": {"pan.baidu.com", "yun.baidu.com"},
     "tianyi": {"cloud.189.cn"},
     "yun139": {"yun.139.com", "caiyun.feixin.10086.cn"},
     "guangya": {"guangyapan.com"},
@@ -51,7 +52,7 @@ TYPE_NAMES = {key: value["name"] for key, value in RESOURCE_TYPE_DISPLAY.items()
 
 SUPPORTED_CLOUD_TYPES = tuple(TYPE_HOSTS)
 RESOURCE_TYPE_ORDER = (
-    "115", "123", "quark", "guangya", "tianyi", "yun139", "alipan",
+    "115", "123", "quark", "guangya", "tianyi", "yun139", "alipan", "baidu",
     "ed2k", "magnet",
 )
 SUPPORTED_RESOURCE_TYPES = frozenset(RESOURCE_TYPE_ORDER)
@@ -61,7 +62,7 @@ RESOURCE_TYPE_PRIORITY = {
 }
 PANSOU_RESOURCE_TYPES = (
     "aliyun", "quark", "guangya", "tianyi", "yun139",
-    "115", "123", "magnet", "ed2k",
+    "115", "123", "baidu", "magnet", "ed2k",
 )
 #: 分享提取码的承载方式：写入查询参数，或作为“提取码: xxx”附言。
 SHARE_PASSWORD_QUERY_KEYS = {
@@ -85,6 +86,7 @@ PREVIEW_PROVIDER_KEYS = {
     "tianyi": "tianyi",
     "yun139": "yun139",
     "alipan": "alipan",
+    "baidu": "baidu",
 }
 PREVIEW_RESOURCE_TYPES = frozenset({*PREVIEW_PROVIDER_KEYS, "magnet"})
 
@@ -96,6 +98,7 @@ _TYPE_TEXT_MARKERS = {
     "tianyi": ("天翼", "cloud.189.cn"),
     "yun139": ("移动云盘", "中国移动云盘", "yun.139.com", "139云盘"),
     "alipan": ("阿里云盘", "阿里网盘", "alipan", "aliyundrive"),
+    "baidu": ("百度网盘", "百度云", "baidu"),
     "xunlei": ("迅雷", "xunlei"),
     "ed2k": ("ed2k://", "电驴"),
     "magnet": ("magnet:?", "磁力"),

@@ -32,6 +32,9 @@ class TestSearchResourceTypes(unittest.TestCase):
         self.assertEqual(resource_type_from_url("https://pan.quark.cn/s/123456789"), "quark")
         self.assertEqual(resource_type_from_url("https://www.alipan.com/s/abcdef"), "alipan")
         self.assertEqual(resource_type_from_url("https://www.aliyundrive.com/s/abcdef"), "alipan")
+        self.assertEqual(resource_type_from_url("https://pan.baidu.com/s/1Example?pwd=aB12"), "baidu")
+        self.assertEqual(resource_type_from_url("https://yun.baidu.com/share/init?surl=Example"), "baidu")
+        self.assertEqual(resource_type_from_url("https://pan.baidu.com.evil/s/1Example"), "")
         self.assertEqual(resource_type_from_url("https://cloud.189.cn/web/share?code=123"), "tianyi")
         self.assertEqual(resource_type_from_url("https://yun.139.com/w/#/detail/123"), "yun139")
         self.assertEqual(resource_type_from_url("https://caiyun.feixin.10086.cn/detail"), "yun139")
@@ -59,6 +62,10 @@ class TestSearchResourceTypes(unittest.TestCase):
         self.assertEqual(resource_type_from_text("天翼云盘高速下载地址"), "tianyi")
         self.assertEqual(resource_type_from_text("中国移动云盘 4K 原盘"), "yun139")
         self.assertEqual(resource_type_from_text("115网盘独家首发"), "115")
+        self.assertEqual(resource_type_from_text("百度网盘 4K 合集"), "baidu")
+        self.assertIn("baidu", SUPPORTED_RESOURCE_TYPES)
+        self.assertIn("baidu", types_mod.PANSOU_RESOURCE_TYPES)
+        self.assertEqual(types_mod.PREVIEW_PROVIDER_KEYS["baidu"], "baidu")
 
     def test_resource_type_display_name(self):
         self.assertEqual(resource_type_name("115"), "115网盘")
